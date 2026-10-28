@@ -74,7 +74,7 @@ button from the session (`NEOCHUMBY_BUTTON`) when given it, else opens
 | Tap | Click (the cursor moves there, then the button goes down) |
 | Drag | Move with the button down. Drag to the bottom edge to show the inventory |
 | Top button, pressed | Escape: skips the current cutscene |
-| Top button, held 1 second | ScummVM's menu (options, about, quit) |
+| Top button, held 0.8 seconds | ScummVM's menu (options, about, quit) |
 | Top button, held 3 seconds | Quit |
 | Top-left corner, held 3 seconds | neochumby's own way out: ends the app, whatever it is doing |
 
