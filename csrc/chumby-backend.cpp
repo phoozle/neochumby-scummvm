@@ -72,7 +72,7 @@ public:
 
 class OSystem_Chumby : public ModularMixerBackend, public ModularGraphicsBackend, Common::EventSource {
 public:
-	OSystem_Chumby() : _touching(false) { _fsFactory = new POSIXFilesystemFactory(); }
+	OSystem_Chumby() : _touching(false), _overlayWas(false) { _fsFactory = new POSIXFilesystemFactory(); }
 
 	void initBackend() override {
 		_timerManager = new DefaultTimerManager();
@@ -136,7 +136,9 @@ private:
 
 	Common::Queue<Pending> _pending;
 	bool _touching;
+	/** The finger's last place, in screen pixels. */
 	Common::Point _last;
+	bool _overlayWas;
 };
 
 /* A press of the finger is the mouse moving there, then the left button
@@ -154,21 +156,22 @@ bool OSystem_Chumby::pollEvent(Common::Event &event) {
 	while (nc_poll(&e)) {
 		switch (e.type) {
 		case NC_TOUCH_DOWN: {
-			Common::Point p = gfx()->screenToVirtual(e.x, e.y);
+			const Common::Point s(e.x, e.y);
+			const Common::Point p = gfx()->screenToVirtual(e.x, e.y);
 			if (!_touching) {
 				_touching = true;
 				queueMouse(Common::EVENT_MOUSEMOVE, p, now);
 				queueMouse(Common::EVENT_LBUTTONDOWN, p, now + 50);
-			} else if (p != _last) {
+			} else if (s != _last) {
 				queueMouse(Common::EVENT_MOUSEMOVE, p, now);
 			}
-			_last = p;
+			_last = s;
 			break;
 		}
 		case NC_TOUCH_UP:
 			if (_touching) {
 				_touching = false;
-				queueMouse(Common::EVENT_LBUTTONUP, _last, now);
+				queueMouse(Common::EVENT_LBUTTONUP, gfx()->screenToVirtual(_last.x, _last.y), now);
 			}
 			break;
 		case NC_MENU: {
@@ -199,6 +202,14 @@ bool OSystem_Chumby::pollEvent(Common::Event &event) {
 		default:
 			break;
 		}
+	}
+
+	// The mouse is in the game's pixels or the overlay's, whichever shows:
+	// when that changes (ScummVM's menu opening or closing), it is moved to
+	// where the finger last was in the new ones.
+	if (gfx()->isOverlayVisible() != _overlayWas) {
+		_overlayWas = !_overlayWas;
+		queueMouse(Common::EVENT_MOUSEMOVE, gfx()->screenToVirtual(_last.x, _last.y), now);
 	}
 
 	// In order: a click waits for its own press, so its release does too.

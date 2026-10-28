@@ -189,6 +189,18 @@ cargo build --release --target armv5te-unknown-linux-musleabi
 
 ScummVM takes about 20 seconds to compile on 12 cores.
 
+Without rustup (Homebrew's Rust has no prebuilt standard library for the
+Chumby, but ships its source), the standard library can be built along
+with the app; this is how it was built and checked on a Mac:
+
+```sh
+RUSTC_BOOTSTRAP=1 cargo build --release --target armv5te-unknown-linux-musleabi -Zbuild-std=std,panic_abort
+```
+
+The same works for neochumby's `tools/tree`, with
+`RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD=std,panic_abort` in the
+environment.
+
 `neochumby-scummvm --scummvm ARGS...` runs ScummVM with `ARGS` as they are
 (`--scummvm --version`, `--scummvm --list-engines`), and
 `NEOCHUMBY_SCUMMVM_ARGS` adds options to the normal command line

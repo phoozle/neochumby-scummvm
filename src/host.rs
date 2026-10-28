@@ -47,6 +47,7 @@ pub struct Platform {
     steps: VecDeque<(u32, Step)>,
     out: PathBuf,
     button: bool,
+    touching: bool,
     quit: bool,
     presents: u64,
     pixels: u64,
@@ -66,7 +67,16 @@ impl Platform {
         if steps.iter().any(|(_, s)| matches!(s, Step::Shot(_))) {
             std::fs::create_dir_all(&out).expect("NEOCHUMBY_SCUMMVM_OUT");
         }
-        Platform { screen: vec![0; W * H], steps, out, button: false, quit: false, presents: 0, pixels: 0 }
+        Platform {
+            screen: vec![0; W * H],
+            steps,
+            out,
+            button: false,
+            touching: false,
+            quit: false,
+            presents: 0,
+            pixels: 0,
+        }
     }
 
     pub fn screen(&mut self) -> *mut u16 {
@@ -113,9 +123,14 @@ impl Platform {
             let (at, step) = self.steps.pop_front().unwrap();
             match step {
                 Step::Touch(r) => {
-                    if let Raw::Down(p) = r {
-                        eprintln!("neochumby-scummvm (host): {at} ms: touch at {p:?}");
+                    match r {
+                        Raw::Down(p) if !self.touching => {
+                            eprintln!("neochumby-scummvm (host): {at} ms: touch at {p:?}")
+                        }
+                        Raw::Up => eprintln!("neochumby-scummvm (host): {at} ms: lifted"),
+                        _ => {}
                     }
+                    self.touching = matches!(r, Raw::Down(_));
                     out.as_mut().unwrap().push(r);
                 }
                 Step::Button(b) => self.button = b,
@@ -205,6 +220,9 @@ pub struct Sink {
 impl Sink {
     pub fn open(rate: u32) -> Sink {
         let wav = std::env::var_os("NEOCHUMBY_SCUMMVM_WAV").and_then(|p| {
+            if let Some(dir) = std::path::Path::new(&p).parent().filter(|d| !d.as_os_str().is_empty()) {
+                let _ = std::fs::create_dir_all(dir);
+            }
             let mut f = File::create(&p).map_err(|e| eprintln!("NEOCHUMBY_SCUMMVM_WAV: {e}")).ok()?;
             f.write_all(&wav_header(rate, 0)).ok()?;
             Some(f)
