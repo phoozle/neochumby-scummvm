@@ -1,0 +1,13 @@
+# Building this crate on its own for the Chumby, as neochumby's tools/tree
+# does (it sets the same by environment):
+#
+#   cargo build --release --target armv5te-unknown-linux-musleabi
+#
+# Without --target it builds the host test mode (src/host.rs).
+[target.armv5te-unknown-linux-musleabi]
+linker = "tools/zigcc"
+rustflags = ["-C", "link-self-contained=no", "-C", "target-cpu=arm926ej-s"]
+
+[env]
+AR_armv5te_unknown_linux_musleabi = { value = "tools/zigar", relative = true }
+CC_armv5te_unknown_linux_musleabi = { value = "tools/zigcc", relative = true }

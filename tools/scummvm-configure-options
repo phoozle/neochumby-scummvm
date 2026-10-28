@@ -1,0 +1,19 @@
+# ScummVM's configure options for this app, sourced by tools/vendor-scummvm:
+# the SCUMM engine with the HE games (HE needs the Bink decoder, for its
+# later games' videos), statically, and nothing optional: no other engines,
+# no MT-32 or FluidSynth, no networking, cloud, text to speech, OpenGL,
+# SDL, scalers or translations, and no external codec libraries.
+# shellcheck disable=SC2034
+SCUMMVM_OPTS="--backend=null
+ --disable-all-engines --enable-engine=scumm,he --disable-engine=scumm_7_8,rebel2_psx
+ --enable-static --disable-detection-full --enable-release --disable-debug --enable-optimizations
+ --disable-mt32emu --disable-seq-midi --disable-timidity --disable-lua --disable-nuked-opl
+ --disable-scalers --disable-hq-scalers --disable-edge-scalers --disable-aspect --disable-translation
+ --disable-taskbar --disable-cloud --disable-system-dialogs --disable-tts --disable-eventrecorder
+ --disable-tinygl --disable-alsa --disable-ogg --disable-vorbis --disable-tremor --disable-mad
+ --disable-fribidi --disable-flac --disable-zlib --disable-mpeg2 --disable-a52 --disable-opengl-game
+ --disable-opengl-game-classic --disable-opengl-game-shaders --disable-jpeg --disable-png --disable-gif
+ --disable-theoradec --disable-vpx --disable-faad --disable-fluidsynth --disable-fluidlite --disable-sonivox
+ --disable-sparkle --disable-freetype2 --disable-nasm --disable-readline --disable-libunity --disable-gtk
+ --disable-sndio --disable-sdlnet --disable-libcurl --disable-enet --disable-discord
+ --disable-mikmod --disable-openmpt --disable-mpcdec --disable-imgui"

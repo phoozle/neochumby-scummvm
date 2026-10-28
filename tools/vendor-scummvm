@@ -1,0 +1,147 @@
+#!/bin/sh
+# Vendors the part of ScummVM this app builds into third_party/scummvm, and
+# writes what ScummVM's configure would have generated into csrc/config/:
+#
+#   tools/vendor-scummvm SCUMMVM_CHECKOUT [WORK]
+#
+# SCUMMVM_CHECKOUT is a clean checkout of the release in csrc/SCUMMVM_VERSION
+# (git clone --depth 1 --branch v2026.4.0 https://github.com/scummvm/scummvm).
+# It runs ScummVM's own configure with tools/scummvm-configure-options and
+# its own make, twice: for this machine (the host test mode) and for the
+# Chumby (zig c++, armv5te musl). From what those builds compiled it takes:
+#
+#   csrc/scummvm-sources.txt     the .cpp files, less other platforms' and
+#                                the null backend's, plus the few ours needs
+#   third_party/scummvm/         those files and every file they include
+#                                (from the compilers' dependency files),
+#                                with ScummVM's licences
+#   csrc/config/{host,arm}/config.h, csrc/config/engines/*.h
+#
+# Needs make, a host C++ compiler, zig and python3. WORK (default: a
+# temporary directory) keeps the two builds.
+set -eu
+src=$(cd "${1:?usage: tools/vendor-scummvm SCUMMVM_CHECKOUT [WORK]}" && pwd)
+root=$(cd "$(dirname "$0")/.." && pwd)
+work=${2:-$(mktemp -d)}
+mkdir -p "$work"
+work=$(cd "$work" && pwd)
+version=$(cat "$root/csrc/SCUMMVM_VERSION")
+have=$(git -C "$src" describe --tags --exact-match 2>/dev/null || echo unknown)
+[ "$have" = "$version" ] || {
+  echo "vendor-scummvm: $src is at $have, not $version" >&2
+  exit 1
+}
+. "$root/tools/scummvm-configure-options"
+
+# The host build.
+mkdir -p "$work/host"
+(cd "$work/host" && "$src/configure" $SCUMMVM_OPTS > configure.log && make -j8 > make.log 2>&1)
+
+# The Chumby's: configure only links its test programs, never runs them,
+# and zig's compiler runtime calls __sync_* functions that ARMv5 has no
+# instructions for (the Rust standard library provides them in the app);
+# empty stubs let those test links succeed. Only the compiling matters: the
+# null backend's link at the end fails, as it should.
+mkdir -p "$work/arm"
+cat > "$work/arm/zigcxx" <<'EOF'
+#!/bin/sh
+exec zig c++ -target arm-linux-musleabi -mcpu=arm926ej_s "$@"
+EOF
+chmod +x "$work/arm/zigcxx"
+python3 - "$work/arm/sync-stubs.s" <<'EOF'
+import sys
+syms = ["__sync_synchronize"]
+for n in (1, 2, 4, 8):
+    for op in ["add", "sub", "and", "or", "xor", "nand", "min", "max", "umin", "umax"]:
+        syms += [f"__sync_fetch_and_{op}_{n}", f"__sync_{op}_and_fetch_{n}"]
+    syms += [f"__sync_val_compare_and_swap_{n}", f"__sync_bool_compare_and_swap_{n}", f"__sync_lock_test_and_set_{n}"]
+with open(sys.argv[1], "w") as f:
+    f.write(".text\n" + "".join(f".globl {s}\n{s}:\n" for s in syms) + "\tmov r0, #0\n\tbx lr\n")
+EOF
+zig cc -target arm-linux-musleabi -mcpu=arm926ej_s -c "$work/arm/sync-stubs.s" -o "$work/arm/sync-stubs.o"
+(cd "$work/arm" && CXX="$work/arm/zigcxx" LDFLAGS="$work/arm/sync-stubs.o" \
+  "$src/configure" --host=arm-linux-musleabi $SCUMMVM_OPTS > configure.log)
+(cd "$work/arm" && make -k -j8 > make.log 2>&1) || true
+if grep -E '\.(cpp|c|h):[0-9]+:[0-9]+: (fatal )?error' "$work/arm/make.log" >&2; then
+  exit 1
+fi
+
+python3 - "$src" "$root" "$work" <<'EOF'
+import os, re, shutil, sys
+
+src, root, work = sys.argv[1:4]
+
+# Objects ScummVM's make built, as sources.
+def objects(build):
+    out = set()
+    for d, _, files in os.walk(build):
+        for f in files:
+            if f.endswith(".o"):
+                rel = os.path.relpath(os.path.join(d, f[:-2]), build)
+                for ext in (".cpp", ".c"):
+                    if os.path.exists(os.path.join(src, rel + ext)):
+                        out.add(rel + ext)
+    return out
+
+# Other platforms' code, the null backend (ours replaces it) and what our
+# configuration compiles to nothing.
+EXCLUDE = re.compile(
+    r"^(backends/platform/|backends/mixer/null/|backends/midi/|backends/dialogs/|backends/taskbar/"
+    r"|backends/updates/|backends/plugins/|backends/audiocd/(macosx|linux)/|backends/fs/(chroot|posix-drives)/"
+    r"|graphics/opengl/|base/test_new_standards)"
+)
+# What our backend (csrc/) uses that the null one doesn't.
+EXTRA = ["backends/mutex/pthread/pthread-mutex.cpp"]
+
+sources = sorted({s for s in objects(f"{work}/host") | objects(f"{work}/arm") if not EXCLUDE.match(s)} | set(EXTRA))
+
+# Every file those include, from the dependency files of both builds.
+deps = set()
+for build in (f"{work}/host", f"{work}/arm"):
+    for d, _, files in os.walk(build):
+        for f in files:
+            if f.endswith(".d"):
+                text = open(os.path.join(d, f)).read().replace("\\\n", " ")
+                for tok in text.split():
+                    if tok.endswith(":"):
+                        continue
+                    p = os.path.normpath(os.path.join(build, tok)) if not os.path.isabs(tok) else tok
+                    if p.startswith(src + "/"):
+                        deps.add(os.path.relpath(p, src))
+# Headers our backend includes beyond those.
+deps |= {"backends/mutex/pthread/pthread-mutex.h", "backends/fs/posix/posix-fs-factory.h"}
+
+dest = os.path.join(root, "third_party/scummvm")
+shutil.rmtree(dest, ignore_errors=True)
+files = set(sources) | deps | {"COPYING", "COPYRIGHT", "AUTHORS", "README.md", "NEWS.md"}
+for f in sorted(files):
+    os.makedirs(os.path.dirname(os.path.join(dest, f)) or dest, exist_ok=True)
+    shutil.copy2(os.path.join(src, f), os.path.join(dest, f))
+shutil.copytree(os.path.join(src, "LICENSES"), os.path.join(dest, "LICENSES"))
+
+with open(os.path.join(root, "csrc/scummvm-sources.txt"), "w") as f:
+    f.write("# ScummVM's sources this app compiles (tools/vendor-scummvm writes this).\n")
+    f.write("".join(s + "\n" for s in sources))
+
+# configure's outputs. Both builds' config.h, less what only the host's
+# platform or the build machine gave it (macOS's dock, documentation
+# tools) and the Linux CD audio the Chumby has no drive for.
+FIX = {
+    "USE_DOCKTILEPLUGIN": False, "USE_SPARKLE": False, "USE_PANDOC": False, "USE_CURL": False,
+    "USE_LINUXCD": False, "SCUMMVM_NEON": False,
+}
+for name, build in (("host", "host"), ("arm", "arm")):
+    out = os.path.join(root, "csrc/config", name)
+    os.makedirs(out, exist_ok=True)
+    lines = []
+    for line in open(os.path.join(work, build, "config.h")):
+        m = re.match(r"#(define|undef) (\w+)", line)
+        if m and m.group(2) in FIX:
+            line = ("#define %s\n" if FIX[m.group(2)] else "#undef %s\n") % m.group(2)
+        lines.append(line)
+    open(os.path.join(out, "config.h"), "w").write("".join(lines))
+os.makedirs(os.path.join(root, "csrc/config/engines"), exist_ok=True)
+for f in ("detection_table.h", "plugins_table.h"):
+    shutil.copy2(os.path.join(work, "arm/engines", f), os.path.join(root, "csrc/config/engines", f))
+print(f"vendor-scummvm: {len(sources)} sources, {len(files)} files")
+EOF

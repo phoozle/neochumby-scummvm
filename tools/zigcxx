@@ -1,0 +1,13 @@
+#!/bin/sh
+# zig c++ for the Chumby Classic (ARM926EJ-S, soft float, static musl), as
+# neochumby's tools/zigcc is zig cc: build.rs compiles ScummVM with it.
+# Drops the target flags cc-rs might add, which zig has from here.
+ZIG=${ZIG:-zig}
+args=
+for a in "$@"; do
+  case "$a" in
+    --target=* | -march=* | -mfloat-abi=* | -marm) ;;
+    *) args="$args '$(printf %s "$a" | sed "s/'/'\\\\''/g")'" ;;
+  esac
+done
+eval exec "$ZIG" c++ -target arm-linux-musleabi -mcpu=arm926ej_s "$args"

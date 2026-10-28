@@ -1,0 +1,19 @@
+/target
+# Game data and anything made from it is never committed: the games are
+# the owner's own copies, and the host test mode's screenshots and audio
+# are made from them.
+/games/
+/data/
+/out/
+*.png
+*.wav
+*.HE[0-9]
+*.he[0-9]
+*.(a)
+*.000
+*.001
+*.LFL
+*.lfl
+*.SOU
+*.sou
+/saves/

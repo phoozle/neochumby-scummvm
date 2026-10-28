@@ -1,0 +1,41 @@
+[package]
+name = "neochumby-scummvm"
+description = "ScummVM's SCUMM engine (with the Humongous Entertainment games: Pajama Sam) on the Chumby Classic, as a neochumby app"
+# ScummVM is GPL-3.0-or-later, and this binary links it: so is everything
+# here, our Rust and C++ included.
+license = "GPL-3.0-or-later"
+version = "0.1.0"
+edition = "2024"
+publish = false
+repository = "https://github.com/phoozle/neochumby-scummvm"
+
+[dependencies]
+libc = "0.2"
+
+# The Chumby's screen, touchscreen, speaker and crash reports. Anywhere
+# else the app is built in its host test mode (src/host.rs) and needs none
+# of it.
+[target.'cfg(all(target_arch = "arm", target_os = "linux"))'.dependencies]
+neochumby = { git = "https://github.com/johnmerchant/neochumby", rev = "3f47b92abc12817a633cab92774fcd8e7da31ece" }
+
+[build-dependencies]
+cc = { version = "1", features = ["parallel"] }
+
+[package.metadata.neochumby]
+title = "PAJAMA SAM"
+exec = "neochumby-scummvm"
+colour = "3c50a0"
+# A game: no service may replace it in front, and the top button is its
+# own (ScummVM's menu; held, quit). Both need neochumby's session from
+# PRs #15-#17 (proposal 0002); see the README.
+interrupt = false
+button = true
+
+# As neochumby's own apps are built.
+[profile.release]
+opt-level = 2
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = false
+debug = "line-tables-only"
