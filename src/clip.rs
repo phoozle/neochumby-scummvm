@@ -133,7 +133,7 @@ pub fn apply(record: &[u8], picture: &mut [u16]) -> Result<(), String> {
         } else {
             let bytes = (len * 2).next_multiple_of(4);
             let b = record.get(p..p + bytes).ok_or("record: pixels past the end")?;
-            for (i, px) in b[..len * 2].chunks_exact(2).enumerate() {
+            for (i, px) in b[..len * 2].as_chunks::<2>().0.iter().enumerate() {
                 picture[start + i] = u16::from_le_bytes([px[0], px[1]]);
             }
             p += bytes;

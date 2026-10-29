@@ -195,8 +195,10 @@ fn read_raw(path: &Path) -> Result<(u32, Vec<Frame>), String> {
         return Err(format!("{}: {} bytes for {n} frames", path.display(), body.len()));
     }
     let frames = body
-        .chunks_exact(clip::PIXELS * 2)
-        .map(|f| f.chunks_exact(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect())
+        .as_chunks::<{ clip::PIXELS * 2 }>()
+        .0
+        .iter()
+        .map(|f| f.as_chunks::<2>().0.iter().map(|p| u16::from_le_bytes(*p)).collect())
         .collect();
     Ok((fps, frames))
 }
