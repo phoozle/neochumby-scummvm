@@ -315,6 +315,15 @@ include, with ScummVM's licences), `csrc/scummvm-sources.txt` and
 `csrc/config/`. For a new release, change `csrc/SCUMMVM_VERSION` first. No
 file in `third_party/scummvm` is changed from upstream.
 
+## The screensaver converter
+
+`neochumby-pajamasam` makes looping screensaver clips of Pajama Sam 1 and 2
+from **your own** game files, on your server: see
+[docs/pajamasam.md](docs/pajamasam.md) and the clip format,
+[docs/clip-format.md](docs/clip-format.md). It records with the host test
+mode above; the clips it makes are made from the games, so like the games
+they stay yours: never committed here, never published.
+
 ## Licence
 
 ScummVM is GPL-3.0-or-later, and this app links it, so the whole crate,

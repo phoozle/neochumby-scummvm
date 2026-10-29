@@ -17,3 +17,10 @@
 *.SOU
 *.sou
 /saves/
+# The screensaver's clips and recordings are made from the owner's games:
+# never committed either.
+*.raw
+*.clip
+*.idx
+clips.txt
+/clips/

@@ -31,6 +31,8 @@
 #include "base/main.h"
 #include "common/events.h"
 #include "common/queue.h"
+#include "engines/engine.h"
+#include "gui/debugger.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -226,6 +228,42 @@ bool OSystem_Chumby::pollEvent(Common::Event &event) {
 		break;
 	}
 	return true;
+}
+
+/* GUI::Debugger::handleCommand is protected; a member pointer taken
+ * through a subclass reaches it without a cast of the object. */
+struct DebuggerAccess : GUI::Debugger {
+	static bool run(GUI::Debugger *d, int argc, const char **argv) {
+		bool keepRunning = false;
+		return (d->*(&DebuggerAccess::handleCommand))(argc, argv, keepRunning);
+	}
+};
+
+/* Runs one command of the engine's debugger, as typed at its console (the
+ * host test mode's recorder: `room 12`). 1 if there was an engine to run
+ * it in. */
+extern "C" int scummvm_chumby_debug(const char *line) {
+	if (!g_engine)
+		return 0;
+	GUI::Debugger *d = g_engine->getOrCreateDebugger();
+	if (!d)
+		return 0;
+	Common::Array<char> copy(line, strlen(line) + 1);
+	Common::Array<const char *> argv;
+	char *p = copy.data();
+	char *end = p + strlen(line);
+	while (p < end) {
+		while (p < end && *p == ' ')
+			*p++ = 0;
+		if (p < end)
+			argv.push_back(p);
+		while (p < end && *p != ' ')
+			p++;
+	}
+	if (argv.empty())
+		return 1;
+	DebuggerAccess::run(d, argv.size(), argv.data());
+	return 1;
 }
 
 extern "C" int scummvm_chumby_main(int argc, char **argv) {

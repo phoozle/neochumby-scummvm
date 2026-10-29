@@ -19,8 +19,16 @@
 //!   8000 menu               the top button held until ScummVM's menu opens
 //!   9000 hold               the top button held until it quits
 //!   9500 shot title         saves OUT/title.png
+//!   9600 debug room 12      a ScummVM debugger command, as typed at its console
+//!   9700 record 12 120 a.raw   120 frames at 12 fps into OUT/a.raw (see below)
 //!   9900 quit               the session's SIGTERM
 //!   ```
+//!
+//! A recording is raw frames, for tools/the converter to make clips of:
+//! `NCRAW001`, a u16 fps, a u32 frame count, then the frames, each 320x240
+//! RGB565 little-endian. Frames are taken on time: if the game falls
+//! behind, a frame is repeated rather than the clock bent. With
+//! NEOCHUMBY_SCUMMVM_NO_CURSOR set the mouse cursor isn't drawn.
 //!
 //! - The audio goes to NEOCHUMBY_SCUMMVM_WAV, a 16-bit stereo WAV, if set,
 //!   at the pace a speaker would take it.
@@ -39,7 +47,20 @@ enum Step {
     Touch(Raw),
     Button(bool),
     Shot(String),
+    Debug(String),
+    Record { fps: u32, frames: u32, name: String },
     Quit,
+}
+
+/// A recording in progress.
+struct Recording {
+    fps: u32,
+    total: u32,
+    name: String,
+    /// When the next frame is due, in microseconds since the start.
+    next_us: u64,
+    data: Vec<u8>,
+    taken: u32,
 }
 
 pub struct Platform {
@@ -51,6 +72,7 @@ pub struct Platform {
     quit: bool,
     presents: u64,
     pixels: u64,
+    recording: Option<Recording>,
 }
 
 impl Platform {
@@ -64,7 +86,7 @@ impl Platform {
             }
             None => VecDeque::new(),
         };
-        if steps.iter().any(|(_, s)| matches!(s, Step::Shot(_))) {
+        if steps.iter().any(|(_, s)| matches!(s, Step::Shot(_) | Step::Record { .. })) {
             std::fs::create_dir_all(&out).expect("NEOCHUMBY_SCUMMVM_OUT");
         }
         Platform {
@@ -76,6 +98,7 @@ impl Platform {
             quit: false,
             presents: 0,
             pixels: 0,
+            recording: None,
         }
     }
 
@@ -99,6 +122,9 @@ impl Platform {
 
     /// The script's `quit`, once.
     pub fn quit_requested(&mut self, _now: u32) -> bool {
+        if self.recording.is_some() {
+            return false;
+        }
         std::mem::take(&mut self.quit)
     }
 
@@ -113,11 +139,16 @@ impl Platform {
     /// Runs the steps that are due. Touches wait for the next poll (`out`),
     /// so that each is read in order, as from the touchscreen.
     fn run(&mut self, now: u32, mut out: Option<&mut Vec<Raw>>) {
+        self.capture();
         while let Some((at, _)) = self.steps.front() {
             if (now.wrapping_sub(*at) as i32) < 0 {
                 break;
             }
-            if matches!(self.steps[0].1, Step::Touch(_)) && out.is_none() {
+            // Touches and debugger commands wait for a poll: the first so
+            // that each is read in order, as from the touchscreen; the
+            // second so that they run between the engine's frames, never
+            // in the middle of drawing one.
+            if matches!(self.steps[0].1, Step::Touch(_) | Step::Debug(_)) && out.is_none() {
                 break;
             }
             let (at, step) = self.steps.pop_front().unwrap();
@@ -135,9 +166,52 @@ impl Platform {
                 }
                 Step::Button(b) => self.button = b,
                 Step::Shot(name) => self.shot(&name),
+                Step::Debug(cmd) => {
+                    let ok = crate::abi::debug_command(&cmd);
+                    eprintln!(
+                        "neochumby-scummvm (host): {at} ms: debug {cmd}: {}",
+                        if ok { "ran" } else { "no engine" }
+                    );
+                }
+                Step::Record { fps, frames, name } => {
+                    let start = crate::abi::micros();
+                    let mut data = Vec::with_capacity(14 + frames as usize * W * H * 2);
+                    data.extend(b"NCRAW001");
+                    data.extend((fps as u16).to_le_bytes());
+                    data.extend(frames.to_le_bytes());
+                    self.recording = Some(Recording { fps, total: frames, name, next_us: start, data, taken: 0 });
+                    self.capture();
+                }
                 Step::Quit => self.quit = true,
             }
         }
+    }
+
+    /// Takes the frames that are due, and writes the recording when it has
+    /// them all.
+    fn capture(&mut self) {
+        let Some(rec) = self.recording.as_mut() else { return };
+        let now = crate::abi::micros();
+        while rec.taken < rec.total && now >= rec.next_us {
+            for &p in &self.screen {
+                rec.data.extend(p.to_le_bytes());
+            }
+            rec.taken += 1;
+            rec.next_us += 1_000_000 / rec.fps as u64;
+        }
+        if rec.taken == rec.total {
+            let rec = self.recording.take().unwrap();
+            let path = self.out.join(&rec.name);
+            match std::fs::write(&path, &rec.data) {
+                Ok(()) => eprintln!("neochumby-scummvm (host): recorded {} frames to {}", rec.total, path.display()),
+                Err(e) => eprintln!("neochumby-scummvm (host): {}: {e}", path.display()),
+            }
+        }
+    }
+
+    /// Whether a recording is still being taken (the script's quit waits).
+    pub fn recording(&self) -> bool {
+        self.recording.is_some()
     }
 
     fn shot(&self, name: &str) {
@@ -195,6 +269,15 @@ fn parse(text: &str) -> VecDeque<(u32, Step)> {
                 steps.push((at + crate::input::HOLD_QUIT_MS + 500, Step::Button(false)));
             }
             Some("shot") => steps.push((at, Step::Shot(f.get(2).unwrap_or(&"shot").to_string()))),
+            Some("debug") => steps.push((at, Step::Debug(f[2..].join(" ")))),
+            Some("record") => steps.push((
+                at,
+                Step::Record {
+                    fps: num(2).clamp(1, 50) as u32,
+                    frames: num(3).max(1) as u32,
+                    name: f.get(4).unwrap_or(&"recording.raw").to_string(),
+                },
+            )),
             Some("quit") => steps.push((at, Step::Quit)),
             _ => panic!("script line {}: {line}", n + 1),
         }

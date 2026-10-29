@@ -77,6 +77,9 @@ void nc_exit(int32_t code);
 
 /* Fills frames stereo frames (interleaved int16) of audio. */
 void scummvm_chumby_mix(int16_t *buf, uint32_t frames);
+/* Runs a command of ScummVM's debugger in the running engine (`room 12`);
+ * 1 if there was an engine. From ScummVM's thread, between frames. */
+int scummvm_chumby_debug(const char *line);
 /* ScummVM's main, on the Chumby backend. */
 int scummvm_chumby_main(int argc, char **argv);
 

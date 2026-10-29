@@ -9,6 +9,10 @@
 //! contended on the Chumby: its futex flags are newer than the 2.6.16
 //! kernel.)
 
+// The exports are called from C++ with the pointers csrc/chumby.h
+// promises; they are the ABI, not functions for Rust to call.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use std::collections::VecDeque;
 use std::ffi::c_int;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
@@ -35,6 +39,7 @@ const NC_ESCAPE: i32 = 5;
 
 unsafe extern "C" {
     fn scummvm_chumby_mix(buf: *mut i16, frames: u32);
+    fn scummvm_chumby_debug(line: *const std::ffi::c_char) -> c_int;
     fn scummvm_chumby_main(argc: c_int, argv: *mut *mut std::ffi::c_char) -> c_int;
 }
 
@@ -96,6 +101,21 @@ pub fn init() {
         // async-signal-safe.
         unsafe { libc::signal(sig, on_term as *const () as libc::sighandler_t) };
     }
+}
+
+/// Microseconds since start (the recorder's clock).
+pub fn micros() -> u64 {
+    START.get_or_init(Instant::now).elapsed().as_micros() as u64
+}
+
+/// Runs a command of ScummVM's debugger (`room 12`) in the running engine;
+/// false if there is no engine yet. Only from ScummVM's own thread, between
+/// frames (the host test mode runs them from its event poll).
+pub fn debug_command(line: &str) -> bool {
+    let Ok(c) = std::ffi::CString::new(line) else { return false };
+    // SAFETY: a NUL-terminated string that outlives the call; the C++ side
+    // only reads it.
+    unsafe { scummvm_chumby_debug(c.as_ptr()) != 0 }
 }
 
 pub fn millis() -> u32 {

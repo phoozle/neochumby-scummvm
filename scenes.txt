@@ -1,0 +1,18 @@
+# neochumby-pajamasam's scene list: rooms recorded first, before --auto's
+# liveliest ones. One scene a line:
+#
+#   NAME GAME ROOM SETTLE_MS SECONDS FPS TITLE...
+#
+# NAME     the clip's file name (letters, digits, - and _)
+# GAME     ps1 (Pajama Sam) or ps2 (Pajama Sam 2)
+# ROOM     the room's number (`neochumby-pajamasam rooms --ps1 DIR` lists
+#          them by name; `survey` says which keep moving)
+# SETTLE_MS  how long after entering the room recording starts
+# SECONDS  how much is recorded; the loop is cut from it
+# FPS      the clip's frame rate (10-12 is usual)
+#
+# Only numbers and names here: no game data, ever.
+#
+# Wanted, rooms not yet known (fill in from `survey` on the owner's copies):
+#   ps1-castle-dance   ps1 ? 2000 16 12 Darkness's castle: the dancing furniture
+#   ps2-boat           ps2 ? 2000 16 12 The boat

@@ -534,7 +534,9 @@ Common::Rect ChumbyGraphicsManager::cursorRect() const {
 
 void ChumbyGraphicsManager::drawCursor() {
 	_cursorDrawn = Common::Rect();
-	if (!_cursorVisible || _cursorStale)
+	// Recordings (the host test mode's) are taken without it.
+	static const bool hidden = getenv("NEOCHUMBY_SCUMMVM_NO_CURSOR") != nullptr;
+	if (!_cursorVisible || _cursorStale || hidden)
 		return;
 	const Common::Rect r = cursorRect();
 	if (r.isEmpty())

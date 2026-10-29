@@ -13,6 +13,8 @@ fn main() {
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let target = std::env::var("TARGET").unwrap();
     let chumby = target.starts_with("armv5te-") && target.contains("linux");
+    // neochumbyd's server (static musl, through zig): the converter.
+    let server_musl = target == "x86_64-unknown-linux-musl";
     let scummvm = root.join("third_party/scummvm");
 
     let list = std::fs::read_to_string(root.join("csrc/scummvm-sources.txt")).unwrap();
@@ -35,6 +37,13 @@ fn main() {
             .flag("-fdata-sections")
             .define("ARM_TARGET", None)
             .include(root.join("csrc/config/arm"));
+    } else if server_musl && std::env::var_os("CXX_x86_64_unknown_linux_musl").is_none() {
+        build
+            .compiler(root.join("tools/zigcxx-x86_64"))
+            .archiver(root.join("tools/zigar"))
+            .cpp_link_stdlib(None)
+            .opt_level(2)
+            .include(root.join("csrc/config/host"));
     } else {
         build.opt_level(2).include(root.join("csrc/config/host"));
     }
@@ -59,7 +68,7 @@ fn main() {
         .flag_if_supported("-w")
         .compile("scummvm");
 
-    if chumby {
+    if chumby || server_musl {
         // zig's libc++, which `zig cc` (neochumby's linker) links on -lc++.
         println!("cargo:rustc-link-lib=c++");
     }

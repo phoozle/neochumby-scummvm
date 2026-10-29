@@ -1,0 +1,15 @@
+#!/bin/sh
+# zig cc as rustc's linker for neochumbyd's server (x86_64, static musl):
+# the converter built with --target x86_64-unknown-linux-musl. As
+# tools/zigcc (a copy of neochumby's, MIT), for that target.
+ZIGCC_TARGET=x86_64-linux-musl
+ZIG=${ZIG:-zig}
+args=
+for a in "$@"; do
+  case "$a" in
+    -lgcc_s) args="$args -lunwind" ;;
+    -lgcc | --target=* | -Wl,--eh-frame-hdr | -Wl,-O1) ;;
+    *) args="$args '$(printf %s "$a" | sed "s/'/'\\\\''/g")'" ;;
+  esac
+done
+eval exec "$ZIG" cc -target "$ZIGCC_TARGET" "$args"

@@ -11,3 +11,9 @@ rustflags = ["-C", "link-self-contained=no", "-C", "target-cpu=arm926ej-s"]
 [env]
 AR_armv5te_unknown_linux_musleabi = { value = "tools/zigar", relative = true }
 CC_armv5te_unknown_linux_musleabi = { value = "tools/zigcc", relative = true }
+
+# The converter (neochumby-pajamasam) for neochumbyd's server, static:
+#   cargo build --release --target x86_64-unknown-linux-musl --bin neochumby-pajamasam
+[target.x86_64-unknown-linux-musl]
+linker = "tools/zigcc-x86_64"
+rustflags = ["-C", "link-self-contained=no"]

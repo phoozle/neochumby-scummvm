@@ -32,6 +32,11 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --release -- -D warnings
       - run: cargo test --release
+      - name: The converter's contract (no games here)
+        run: |
+          b=target/release/neochumby-pajamasam
+          if $b check --ps1 /nonexistent; then exit 1; else test $? -eq 2; fi
+          if $b bogus; then exit 1; else test $? -eq 1; fi
       - name: ScummVM starts, with the SCUMM engine
         run: |
           target/release/neochumby-scummvm --scummvm --version
